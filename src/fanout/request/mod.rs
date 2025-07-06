@@ -30,8 +30,8 @@ mod label_values;
 #[path = "./response_generated.rs"]
 mod response_generated;
 pub(crate) mod serialization;
-mod stats;
 mod series_chunk;
+mod stats;
 
 pub use cardinality::*;
 pub use index_query::*;

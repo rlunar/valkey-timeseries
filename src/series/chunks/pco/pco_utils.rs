@@ -1,14 +1,16 @@
-use pco::errors::PcoError;
+use crate::common::encoding::{read_uvarint, write_uvarint};
+use crate::common::parallel::join;
 use crate::common::pool::get_pooled_buffer;
 use crate::common::Timestamp;
 use crate::error::{TsdbError, TsdbResult};
 use pco::data_types::Number;
-use pco::standalone::{simple_compress, simple_compress_into, simple_decompress, simple_decompress_into};
+use pco::errors::PcoError;
+use pco::standalone::{
+    simple_compress, simple_compress_into, simple_decompress, simple_decompress_into,
+};
 use pco::DEFAULT_COMPRESSION_LEVEL;
 use pco::{ChunkConfig, DeltaSpec};
 use std::error::Error;
-use crate::common::encoding::{read_uvarint, write_uvarint};
-use crate::common::parallel::join;
 
 // mirror ChunkConfig here so downstream users don't need to import pco
 #[derive(Clone, Debug)]
@@ -78,7 +80,6 @@ pub(super) fn decompress_values(compressed: &[u8], dst: &mut Vec<f64>) -> TsdbRe
     pco_decode(compressed, dst).map_err(|e| TsdbError::CannotDeserialize(format!("values: {e}")))
 }
 
-
 fn write_data<T: Number>(
     dest: &mut Vec<u8>,
     values: &[T],
@@ -89,8 +90,7 @@ fn write_data<T: Number>(
     write_usize(dest, save_pos);
     simple_compress_into(values, config, dest).map_err(map_err)?;
     let len = dest.len() - save_pos;
-    dest[save_pos..save_pos + size_of::<usize>()]
-        .copy_from_slice(&len.to_le_bytes());
+    dest[save_pos..save_pos + size_of::<usize>()].copy_from_slice(&len.to_le_bytes());
     Ok(len)
 }
 
@@ -203,22 +203,22 @@ pub fn decompress_samples_internal(
     }
 
     let mut input = compressed;
-    let Some((count, ofs)) = read_uvarint(&input, 0) else {
+    let Some((count, ofs)) = read_uvarint(input, 0) else {
         return Err(TsdbError::CannotDeserialize("count".to_string()));
     };
 
     input = &input[ofs..];
-    let Some((_data_len, ofs)) = read_uvarint(&input, 0) else {
+    let Some((_data_len, ofs)) = read_uvarint(input, 0) else {
         return Err(TsdbError::CannotDeserialize("data_len".to_string()));
     };
 
     input = &input[ofs..];
-    let Some((ts_len, ofs)) = read_uvarint(&input, 0) else {
+    let Some((ts_len, ofs)) = read_uvarint(input, 0) else {
         return Err(TsdbError::CannotDeserialize("ts_len".to_string()));
     };
 
     input = &input[ofs..];
-    let Some((value_len, _)) = read_uvarint(&input, 0) else {
+    let Some((value_len, _)) = read_uvarint(input, 0) else {
         return Err(TsdbError::CannotDeserialize("value_len".to_string()));
     };
 
@@ -250,15 +250,16 @@ pub fn decompress_samples_internal(
 
     // Verify lengths match as expected
     if timestamps.len() != count as usize || values.len() != count as usize {
-        return Err(TsdbError::CannotDeserialize(
-            format!("decompressed count mismatch: expected {} but got {} timestamps and {} values",
-                    count, timestamps.len(), values.len())
-        ));
+        return Err(TsdbError::CannotDeserialize(format!(
+            "decompressed count mismatch: expected {} but got {} timestamps and {} values",
+            count,
+            timestamps.len(),
+            values.len()
+        )));
     }
 
     Ok(())
 }
-
 
 fn write_usize(slice: &mut Vec<u8>, size: usize) {
     slice.extend_from_slice(&size.to_le_bytes());

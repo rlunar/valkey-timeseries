@@ -1,10 +1,5 @@
 use super::response_generated::{
-    CompressionType,
-    Label as FBLabel,
-    LabelArgs,
-    SampleData,
-    SampleDataArgs,
-    SeriesChunk,
+    CompressionType, Label as FBLabel, LabelArgs, SampleData, SampleDataArgs, SeriesChunk,
     SeriesChunkArgs,
 };
 use crate::common::pool::get_pooled_buffer;
@@ -21,8 +16,7 @@ use valkey_module::{ValkeyError, ValkeyResult};
 
 static CONFIG: LazyLock<Configuration> = LazyLock::new(|| {
     // Configure bincode with a standard configuration
-    bincode::config::standard()
-        .with_variable_int_encoding()
+    bincode::config::standard().with_variable_int_encoding()
 });
 
 // for future compatibility
@@ -36,7 +30,7 @@ fn get_compression_type(chunk: &TimeSeriesChunk) -> CompressionType {
     }
 }
 
-pub(super) fn serialize_chunk_internal<'a>(
+pub(super) fn serialize_chunk_internal(
     chunk: TimeSeriesChunk,
     dest: &mut Vec<u8>,
 ) -> ValkeyResult<usize> {
@@ -48,7 +42,7 @@ pub(super) fn serialize_chunk_internal<'a>(
     match chunk {
         TimeSeriesChunk::Uncompressed(data) => encode(data, dest),
         TimeSeriesChunk::Gorilla(data) => encode(data, dest),
-        TimeSeriesChunk::Pco(data) => encode(data, dest)
+        TimeSeriesChunk::Pco(data) => encode(data, dest),
     }
 }
 
@@ -83,10 +77,13 @@ pub(super) fn serialize_chunk<'a>(
     for label in labels.iter() {
         let name = bldr.create_string(label.name);
         let value = bldr.create_string(label.value);
-        let label = FBLabel::create(bldr, &LabelArgs {
-            name: Some(name),
-            value: Some(value),
-        });
+        let label = FBLabel::create(
+            bldr,
+            &LabelArgs {
+                name: Some(name),
+                value: Some(value),
+            },
+        );
         lbls.push(label);
     }
     let request_labels = bldr.create_vector(&lbls);
@@ -101,10 +98,10 @@ pub(super) fn serialize_chunk<'a>(
     ))
 }
 
-pub(super) fn deserialize_sample_data(
-    chunk: &SampleData
-) -> ValkeyResult<TimeSeriesChunk> {
-    let data = chunk.data().ok_or_else(|| ValkeyError::Str("Missing data in SeriesChunk"))?;
+pub(super) fn deserialize_sample_data(chunk: &SampleData) -> ValkeyResult<TimeSeriesChunk> {
+    let data = chunk
+        .data()
+        .ok_or(ValkeyError::Str("Missing data in SeriesChunk"))?;
 
     fn decode<T: DeserializeOwned>(data: &[u8]) -> ValkeyResult<T> {
         let (chunk, _) = decode_from_slice(data, *CONFIG)
@@ -124,9 +121,9 @@ pub(super) fn deserialize_sample_data(
         CompressionType::Pco => {
             let chunk = decode::<PcoChunk>(data.bytes())?;
             Ok(TimeSeriesChunk::Pco(chunk))
-        },
-        _=> {
-            Err(ValkeyError::Str("cluster: Unknown compression type in SeriesChunk"))
         }
+        _ => Err(ValkeyError::Str(
+            "cluster: Unknown compression type in SeriesChunk",
+        )),
     }
 }

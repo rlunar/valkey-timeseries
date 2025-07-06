@@ -9,8 +9,7 @@ use super::request_generated::{
 };
 use super::response_generated::{
     Label as ResponseLabel, LabelArgs, MultiRangeResponse as FBMultiRangeResponse,
-    MultiRangeResponseArgs, SeriesResponse as FBSeriesResponse,
-    SeriesResponseArgs,
+    MultiRangeResponseArgs, SeriesResponse as FBSeriesResponse, SeriesResponseArgs,
 };
 use crate::aggregators::{Aggregation, BucketAlignment, BucketTimestamp};
 use crate::commands::process_mrange_query;
@@ -408,11 +407,11 @@ fn encode_series_response<'a>(
     }
 
     let labels = bldr.create_vector(&labels);
-    let sample_chunk = samples_to_chunk(&response.samples)
-        .expect("Failed to convert samples to chunk");
+    let sample_chunk =
+        samples_to_chunk(&response.samples).expect("Failed to convert samples to chunk");
 
-    let sample_data = serialize_sample_data(bldr, sample_chunk)
-        .expect("Failed to serialize sample data");
+    let sample_data =
+        serialize_sample_data(bldr, sample_chunk).expect("Failed to serialize sample data");
 
     FBSeriesResponse::create(
         bldr,
@@ -430,8 +429,8 @@ fn decode_series_response(reader: &FBSeriesResponse) -> MRangeSeriesResult {
     let group_label_value = reader.group_label_value().map(|x| x.to_string());
     let samples = match reader.samples().as_ref() {
         Some(sample_data) => {
-            let chunk = deserialize_sample_data(sample_data)
-                .expect("Failed to deserialize sample data");
+            let chunk =
+                deserialize_sample_data(sample_data).expect("Failed to deserialize sample data");
             chunk.iter().collect()
         }
         None => Vec::new(),

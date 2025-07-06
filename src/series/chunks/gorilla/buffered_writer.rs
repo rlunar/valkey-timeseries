@@ -23,8 +23,8 @@ use super::traits::BitWrite;
 use super::utils::{zigzag_encode, MSB};
 use get_size::GetSize;
 use num_traits::PrimInt;
-use std::io::Result;
 use serde::{Deserialize, Serialize};
+use std::io::Result;
 
 /// BufferedWriter
 ///

@@ -72,9 +72,7 @@ impl Deserialized for MatchFilterOptions {
     }
 }
 
-pub(super) fn samples_to_chunk(
-    samples: &[Sample]
-) -> ValkeyResult<TimeSeriesChunk>  {
+pub(super) fn samples_to_chunk(samples: &[Sample]) -> ValkeyResult<TimeSeriesChunk> {
     let mut chunk = if samples.len() >= 1000 {
         TimeSeriesChunk::Pco(PcoChunk::default())
     } else if samples.len() >= 5 {
@@ -82,7 +80,8 @@ pub(super) fn samples_to_chunk(
     } else {
         TimeSeriesChunk::Uncompressed(UncompressedChunk::default())
     };
-    chunk.set_data(samples)
+    chunk
+        .set_data(samples)
         .map_err(|e| ValkeyError::String(format!("Failed to set chunk data: {e}")))?;
     Ok(chunk)
 }

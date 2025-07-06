@@ -1,8 +1,8 @@
 use crate::common::binary_search::*;
 use crate::common::{Sample, Timestamp};
+use crate::error::{TsdbError, TsdbResult};
 use crate::series::types::ValueFilter;
 use smallvec::SmallVec;
-use crate::error::{TsdbError, TsdbResult};
 
 #[inline]
 pub(crate) fn filter_samples_by_value(samples: &mut Vec<Sample>, value_filter: &ValueFilter) {
@@ -58,7 +58,6 @@ pub(crate) fn filter_timestamp_slice(
     filtered
 }
 
-
 pub(crate) fn write_usize(slice: &mut Vec<u8>, size: usize) {
     slice.extend_from_slice(&size.to_le_bytes());
 }
@@ -72,4 +71,3 @@ pub(crate) fn read_usize(input: &mut &[u8], field: &str) -> TsdbResult<usize> {
     *input = rest;
     Ok(usize::from_le_bytes(buf))
 }
-

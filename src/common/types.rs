@@ -1,8 +1,8 @@
 use get_size::GetSize;
+use serde::{Deserialize, Serialize};
 use std::cmp::Ordering;
 use std::fmt::Display;
 use std::hash::{Hash, Hasher};
-use serde::{Deserialize, Serialize};
 use valkey_module::ValkeyValue;
 
 pub type Timestamp = i64;

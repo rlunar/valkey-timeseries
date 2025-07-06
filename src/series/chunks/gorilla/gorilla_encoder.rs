@@ -9,8 +9,8 @@ use crate::common::rdb::{
 };
 use crate::common::Sample;
 use get_size::GetSize;
-use std::mem::size_of_val;
 use serde::{Deserialize, Serialize};
+use std::mem::size_of_val;
 use valkey_module::error::Error as ValkeyError;
 use valkey_module::raw;
 
