@@ -77,12 +77,8 @@ unsafe extern "C" fn mem_usage(value: *const c_void) -> usize {
 
 #[allow(unused)]
 unsafe extern "C" fn free(value: *mut c_void) {
-    if value.is_null() {
-        return;
-    }
     let sm = value.cast::<TimeSeries>();
     // remove_series_from_index(&*sm);
-
     drop(Box::from_raw(sm));
 }
 
@@ -94,17 +90,18 @@ unsafe extern "C" fn copy(
 ) -> *mut c_void {
     let guard = valkey_module::MODULE_CONTEXT.lock();
     with_timeseries_index(&guard, |index| {
-        let sm = &*(value as *mut TimeSeries);
-        let mut new_series = sm.clone();
+        let old_series = &*value.cast::<TimeSeries>();
+        let mut new_series = old_series.clone();
         new_series.id = next_timeseries_id();
         let key = ValkeyString::from_redis_module_string(guard.ctx, to_key);
         index.index_timeseries(&new_series, key.as_slice());
-        Box::into_raw(Box::new(new_series)).cast::<c_void>()
+        let boxed = Box::new(new_series);
+        Box::into_raw(boxed).cast::<c_void>()
     })
 }
 
 unsafe extern "C" fn unlink(_key: *mut RedisModuleString, value: *const c_void) {
-    let series = &*(value as *mut TimeSeries);
+    let series = &*value.cast::<TimeSeries>();
     if value.is_null() {
         return;
     }
@@ -116,10 +113,11 @@ unsafe extern "C" fn defrag(
     _key: *mut RedisModuleString,
     value: *mut *mut c_void,
 ) -> c_int {
-    let series = &mut *(value as *mut TimeSeries);
     if value.is_null() {
         return 0;
     }
+    // Convert the pointer to a TimeSeries so we can operate on it.
+    let series: &mut TimeSeries = &mut *(*value).cast::<TimeSeries>();
     match defrag_series(series) {
         Ok(_) => 0,
         Err(_) => 1,
