@@ -31,12 +31,6 @@ class TestTsMadd(ValkeyTimeSeriesTestCaseBase):
         self.client.execute_command('TS.CREATE', 'ts1')
         self.client.execute_command('TS.CREATE', 'ts2')
 
-        self.client.execute_command('TS.test',
-                                     'ts1', 1000, 10.0,
-                                     'ts2', 1000, 100.0,
-                                     'ts1', 2000, 20.0,
-                                     'ts2', 2000, 200.0)
-
         # Add samples to both time series
         result = self.client.execute_command('TS.MADD',
                                              'ts1', 1000, 10.0,
