@@ -450,17 +450,15 @@ impl TimeSeries {
 
     /// Get the time series between given start and end time (both inclusive).
     pub fn get_range(&self, start_time: Timestamp, end_time: Timestamp) -> Vec<Sample> {
-        let min_timestamp = self.get_min_timestamp().max(start_time);
-        if !self.overlaps(min_timestamp, end_time) {
+        if !self.overlaps(start_time, end_time) {
             return Vec::new();
         }
-        if let Some(range) = self.get_chunk_index_bounds(min_timestamp, end_time) {
-            let (start_index, end_index) = range;
-            let chunks = &self.chunks[start_index..=end_index];
-            get_range_parallel(chunks, min_timestamp, end_time).unwrap_or_default()
-        } else {
-            Vec::new()
-        }
+        let Some(range) = self.get_chunk_index_bounds(start_time, end_time) else {
+            return Vec::new();
+        };
+        let (start_index, end_index) = range;
+        let chunks = &self.chunks[start_index..=end_index];
+        get_range_parallel(chunks, start_time, end_time).unwrap_or_default()
     }
 
     pub fn get_range_filtered(
@@ -774,6 +772,7 @@ impl TimeSeries {
             self.last_sample.map_or(0, |last| {
                 last.timestamp
                     .saturating_sub(self.retention.as_millis() as i64)
+                    .max(0)
             })
         }
     }

@@ -51,9 +51,11 @@ pub(crate) fn get_range(
     args: &RangeOptions,
     check_retention: bool,
 ) -> Vec<Sample> {
-    let (mut start_timestamp, end_timestamp) = args.date_range.get_timestamps(None);
+    let (mut start_timestamp, mut end_timestamp) = args.date_range.get_timestamps(None);
     if check_retention && !series.retention.is_zero() {
-        start_timestamp = series.get_min_timestamp().max(start_timestamp);
+        let min = series.get_min_timestamp();
+        start_timestamp = min.max(start_timestamp);
+        end_timestamp = start_timestamp.max(end_timestamp);
     }
 
     let mut range = series.get_range_filtered(
@@ -338,33 +340,34 @@ mod tests {
         assert_eq!(result[3].timestamp, 170);
     }
 
-    // #[test]
-    // fn test_get_range_without_retention_check() {
-    //     let mut series = create_test_series();
-    //
-    //     let range = series.last_timestamp() - series.first_timestamp;
-    //     series.retention = Duration::from_secs(range as u64);
-    //
-    //     // Add an old timestamp that would be filtered out by retention
-    //     series.add(50, 100.0, None);
-    //
-    //     let range_options = RangeOptions {
-    //         date_range: TimestampRange {
-    //             start: TimestampValue::Specific(0),
-    //             end: TimestampValue::Specific(200),
-    //         },
-    //         ..Default::default()
-    //     };
-    //
-    //     // With retention check (should filter out old sample)
-    //     let result_with_retention = get_range(&series, &range_options, true);
-    //     // Without retention check (should include old sample)
-    //     let result_without_retention = get_range(&series, &range_options, false);
-    //
-    //     assert!(result_with_retention.len() < result_without_retention.len());
-    //     assert_eq!(result_without_retention[0].timestamp, 50);
-    //     assert_eq!(result_without_retention[0].value, 100.0);
-    // }
+    #[test]
+    fn test_get_range_without_retention_check() {
+        let mut series = create_test_series();
+        // series.add(1000, 15.0, None); // Add a sample outside the retention period
+
+        let range = series.last_timestamp() - series.first_timestamp;
+
+        // Add an old timestamp that would be filtered out by retention
+        series.add(50, 100.0, None);
+        series.retention = Duration::from_millis(range as u64);
+
+        let range_options = RangeOptions {
+            date_range: TimestampRange {
+                start: TimestampValue::Specific(0),
+                end: TimestampValue::Specific(200),
+            },
+            ..Default::default()
+        };
+
+        // With retention check (should filter out old sample)
+        let result_with_retention = get_range(&series, &range_options, true);
+        // Without retention check (should include old sample)
+        let result_without_retention = get_range(&series, &range_options, false);
+
+        assert!(result_with_retention.len() < result_without_retention.len());
+        assert_eq!(result_without_retention[0].timestamp, 50);
+        assert_eq!(result_without_retention[0].value, 100.0);
+    }
 
     #[test]
     fn test_get_range_empty_result() {
