@@ -80,6 +80,12 @@ impl Display for Sample {
 
 impl From<Sample> for ValkeyValue {
     fn from(sample: Sample) -> Self {
+        (&sample).into()
+    }
+}
+
+impl From<&Sample> for ValkeyValue {
+    fn from(sample: &Sample) -> Self {
         let row = vec![
             ValkeyValue::from(sample.timestamp),
             ValkeyValue::from(sample.value),
