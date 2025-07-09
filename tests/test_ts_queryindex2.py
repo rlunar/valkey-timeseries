@@ -75,11 +75,11 @@ class TestTsQueryIndex(ValkeyTimeSeriesTestCaseBase):
         assert result == [b'ts1', b'ts2', b'ts3', b'ts4', b'ts5']
 
         # Match all with .* pattern
-        result = sorted(self.client.execute_command('TS.QUERYINDEX', 'n="~.*"'))
+        result = sorted(self.client.execute_command('TS.QUERYINDEX', 'n=~".*"'))
         assert len(result) == 6  # All series with label 'n'
 
         # Match non-empty values with .+
-        result = sorted(self.client.execute_command('TS.QUERYINDEX', 'i="~.+"'))
+        result = sorted(self.client.execute_command('TS.QUERYINDEX', 'i=~".+"'))
         assert result == [b'ts2', b'ts3', b'ts4', b'ts7']
 
     def test_regex_not_matching(self):
@@ -91,11 +91,11 @@ class TestTsQueryIndex(ValkeyTimeSeriesTestCaseBase):
         assert result == [b'ts5', b'ts6', b'ts7', b'ts8']
 
         # Not matching OR pattern
-        result = sorted(self.client.execute_command('TS.QUERYINDEX', 'n~="1|2"'))
+        result = sorted(self.client.execute_command('TS.QUERYINDEX', 'n=~"1|2"'))
         assert result == [b'ts6', b'ts7', b'ts8']
 
         # Not matching anything (should return empty set)
-        result = sorted(self.client.execute_command('TS.QUERYINDEX', 'n~=".*"'))
+        result = sorted(self.client.execute_command('TS.QUERYINDEX', 'n=~".*"'))
         assert result == [b'ts7', b'ts8']  # Only series without 'n' label
 
     def test_complex_combinations(self):
