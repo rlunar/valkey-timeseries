@@ -50,7 +50,7 @@ impl TimestampValue {
             Specific(ts) => *ts,
             Relative(delta) => {
                 let now = now.unwrap_or_else(current_time_millis);
-                now.saturating_add(*delta).min(MAX_TIMESTAMP)
+                now.saturating_add(*delta)
             }
         }
     }
