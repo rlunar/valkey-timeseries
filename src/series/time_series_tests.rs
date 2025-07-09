@@ -171,6 +171,35 @@ mod tests {
     }
 
     #[test]
+    fn test_add_extreme_values() {
+        let mut series = TimeSeries::new();
+
+        // Test with a very large timestamp (i64::MAX)
+        let max_timestamp = i64::MAX as Timestamp;
+        let result = series.add(max_timestamp, 100.0, None);
+        assert!(result.is_ok());
+
+        // Test with a very large value (close to f64::MAX)
+        let large_value = 1.797_693_134_862_315_7e308_f64;
+        let result = series.add(160000, large_value, None);
+        assert!(result.is_ok());
+
+        // Verify the samples were added correctly
+        let range = series.get_range(Timestamp::MIN, Timestamp::MAX);
+        assert_eq!(range.len(), 2);
+
+        // Check that the large timestamp sample was added
+        let max_ts_sample = range.iter().find(|s| s.timestamp == max_timestamp);
+        assert!(max_ts_sample.is_some());
+        assert_eq!(max_ts_sample.unwrap().value, 100.0);
+
+        // Check that the large value sample was added
+        let large_value_sample = range.iter().find(|s| s.timestamp == 160000);
+        assert!(large_value_sample.is_some());
+        assert!((large_value_sample.unwrap().value - large_value).abs() < 1e300);
+    }
+
+    #[test]
     fn test_add_causes_chunk_split() {
         let mut ts = TimeSeries::new();
         // Set a very small chunk size to force a split
