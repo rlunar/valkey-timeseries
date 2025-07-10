@@ -23,17 +23,17 @@ pub fn range(ctx: &Context, args: Vec<ValkeyString>) -> ValkeyResult {
     let options = parse_range_options(&mut args)?;
 
     args.done()?;
-    if let Some(series) = get_timeseries(ctx, key, Some(AclPermissions::ACCESS), true)? {
-        let samples = get_range(&series, &options, false);
-        let result = samples
-            .into_iter()
-            .map(|x| x.into())
-            .collect::<Vec<ValkeyValue>>();
-
-        Ok(ValkeyValue::from(result))
-    } else {
+    let Some(series) = get_timeseries(ctx, key, Some(AclPermissions::ACCESS), true)? else {
         // essentially a dead branch, but satisfies the compiler
         // since we have already checked the key existence
-        Err(ValkeyError::Str(error_consts::KEY_NOT_FOUND))
-    }
+        return Err(ValkeyError::Str(error_consts::KEY_NOT_FOUND));
+    };
+
+    let samples = get_range(&series, &options, true);
+    let result = samples
+        .into_iter()
+        .map(|x| x.into())
+        .collect::<Vec<ValkeyValue>>();
+
+    Ok(ValkeyValue::from(result))
 }
