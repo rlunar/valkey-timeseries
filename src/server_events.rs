@@ -121,14 +121,15 @@ pub(super) fn generic_key_events_handler(
         event,
         String::from_utf8_lossy(key)
     ));
-    match event {
+
+    hashify::fnc_map_ignore_case!(event.as_bytes(),
         "loaded" => {
             ctx.log_notice("Loaded event received");
             handle_loaded(ctx, key);
-        }
+        },
         "move_from" => {
             *MOVE_FROM_DB.lock().unwrap() = get_current_db(ctx);
-        }
+        },
         "move_to" => {
             let mut lock = MOVE_FROM_DB.lock().unwrap();
             let old_db = *lock;
@@ -136,24 +137,22 @@ pub(super) fn generic_key_events_handler(
             if old_db != -1 {
                 handle_key_move(ctx, key, old_db);
             }
-        }
-        // SAFETY: This is safe because the key is only used in the closure and this function
-        // is not called concurrently
+        },
         "rename_from" => {
             *RENAME_FROM_KEY.lock().unwrap() = key.to_vec();
-        }
+        },
         "rename_to" => {
             let mut old_key = RENAME_FROM_KEY.lock().unwrap();
             if !old_key.is_empty() {
                 handle_key_rename(ctx, &old_key, key);
-                old_key.clear()
+                old_key.clear();
             }
-        }
+        },
         "restore" => {
             handle_key_restore(ctx, key);
-        }
+        },
         _ => {}
-    }
+    );
 }
 
 unsafe extern "C" fn on_flush_event(
