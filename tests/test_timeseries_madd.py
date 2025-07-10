@@ -134,11 +134,12 @@ class TestTsMadd(ValkeyTimeSeriesTestCaseBase):
         # Verify older samples are removed due to retention
         range_result = self.client.execute_command('TS.RANGE', 'ts_retention', 0, now + 10000)
 
-        print(range_result)
-        # The first sample should be removed due to retention (3000ms)
-        assert len(range_result) == 2
-        assert float(range_result[0][1]) == 20.0
-        assert float(range_result[1][1]) == 30.0
+        # Because of the retention policy, only the last 3000ms of data should remain. Given that the last
+        # timestamp is 15,000, the minimum timestamp to return is 12,000
+        assert len(range_result) == 1
+        last = range_result[0]
+        assert float(last[0]) == now + 5000
+        assert float(last[1]) == 30.0
 
     def test_madd_large_batch(self):
         """Test adding a large number of samples in one command"""
