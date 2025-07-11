@@ -1,6 +1,7 @@
 use super::parse_mrange_options;
 use crate::common::constants::{REDUCER_KEY, SOURCE_KEY};
 use crate::common::Sample;
+use crate::error_consts;
 use crate::fanout::cluster::is_clustered;
 use crate::fanout::{perform_remote_mrange_request, MultiRangeResponse};
 use crate::iterators::{MultiSeriesSampleIter, SampleIter};
@@ -21,7 +22,6 @@ use valkey_module::{
     BlockedClient, Context, NextArg, ThreadSafeContext, ValkeyError, ValkeyResult, ValkeyString,
     ValkeyValue,
 };
-use crate::error_consts;
 
 struct SeriesMeta<'a> {
     series: &'a TimeSeries,
