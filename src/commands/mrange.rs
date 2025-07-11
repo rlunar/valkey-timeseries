@@ -21,6 +21,7 @@ use valkey_module::{
     BlockedClient, Context, NextArg, ThreadSafeContext, ValkeyError, ValkeyResult, ValkeyString,
     ValkeyValue,
 };
+use crate::error_consts;
 
 struct SeriesMeta<'a> {
     series: &'a TimeSeries,
@@ -50,7 +51,7 @@ fn mrange_internal(ctx: &Context, args: Vec<ValkeyString>, reverse: bool) -> Val
     let options = parse_mrange_options(&mut args)?;
 
     if options.filters.is_empty() {
-        return Err(ValkeyError::Str("TSDB: no FILTER given"));
+        return Err(ValkeyError::Str(error_consts::MISSING_FILTER));
     }
 
     check_metadata_permissions(ctx)?;
@@ -97,7 +98,7 @@ pub fn process_mrange_query(
     reverse: bool,
 ) -> ValkeyResult<Vec<MRangeSeriesResult>> {
     if options.filters.is_empty() {
-        return Err(ValkeyError::Str("TSDB: no FILTER given"));
+        return Err(ValkeyError::Str(error_consts::MISSING_FILTER));
     }
     let mut options = options;
 
