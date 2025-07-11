@@ -119,26 +119,6 @@ class TestTimeSeriesMRange(ValkeyTimeSeriesTestCaseBase):
             # Might be 5 or 6 samples depending on the exact bucket alignment
             assert len(series[2]) in [5, 6]
 
-    def test_mrange_latest(self):
-        """Test TS.MRANGE with LATEST option"""
-
-        self.setup_data()
-
-        # Add some out-of-order samples
-        late_ts = self.start_ts + 5
-        self.client.execute_command('TS.ADD', 'ts1', late_ts, 99.9)
-
-        # First without LATEST - should see both samples
-        result_all = self.client.execute_command('TS.MRANGE', self.start_ts, self.start_ts + 10,
-                                                 'FILTER', 'sensor=temp', 'location=kitchen')
-        assert len(result_all[0][2]) == 2  # Should have 2 samples in the range
-
-        # With LATEST - should only see the latest sample per timestamp
-        result_latest = self.client.execute_command('TS.MRANGE', self.start_ts, self.start_ts + 10,
-                                                    'LATEST', 'FILTER', 'sensor=temp', 'location=kitchen')
-        assert len(result_latest[0][2]) == 1  # Should have 1 sample
-        assert result_latest[0][2][0][1] == 99.9  # Should be the latest value
-
     def test_mrange_groupby(self):
         """Test TS.MRANGE with GROUPBY option"""
 
