@@ -393,10 +393,11 @@ pub fn parse_duplicate_policy(args: &mut CommandArgIterator) -> ValkeyResult<Dup
 
 pub fn parse_timestamp_range(args: &mut CommandArgIterator) -> ValkeyResult<TimestampRange> {
     let first_arg = args.next_str()?;
-    let start = parse_timestamp_range_value(first_arg)?;
+    let start = parse_timestamp_range_value(first_arg)
+        .map_err(|_e| ValkeyError::Str(error_consts::INVALID_START_TIMESTAMP))?;
     let end_value = if let Ok(arg) = args.next_str() {
         parse_timestamp_range_value(arg)
-            .map_err(|_e| ValkeyError::Str("TSDB: invalid end timestamp"))?
+            .map_err(|_e| ValkeyError::Str(error_consts::INVALID_END_TIMESTAMP))?
     } else {
         TimestampValue::Latest
     };

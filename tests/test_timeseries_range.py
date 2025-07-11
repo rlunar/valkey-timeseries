@@ -81,7 +81,6 @@ class TestTimeSeriesRange(ValkeyTimeSeriesTestCaseBase):
         # Average over 2000ms buckets
         result = self.client.execute_command('TS.RANGE', 'ts1', 1000, 5000, 'AGGREGATION', 'AVG', 2000)
         assert len(result) == 3
-        print(result)
 
         assert result[0][0] == 0
         assert float(result[0][1]) == pytest.approx(10.1)
@@ -93,6 +92,24 @@ class TestTimeSeriesRange(ValkeyTimeSeriesTestCaseBase):
         assert float(result[2][1]) == pytest.approx(45.45)
 
     def test_range_aggregation_options(self):
+        """Test TS.RANGE aggregation with ALIGN, BUCKETTIMESTAMP, EMPTY"""
+
+        self.setup_data()
+
+        # Align to 0, bucket timestamp mid, report empty
+        result = self.client.execute_command('TS.RANGE', 'ts1', 500, 5000,
+                                             'ALIGN', 0,
+                                             'AGGREGATION', 'SUM', 2000,
+                                             'BUCKETTIMESTAMP', 'MID')
+        assert len(result) == 3
+        # Bucket 0 (0-1999): sum(10.1) = 10.1, mid timestamp = 1000
+        assert result[0] == [1000, b'10.1']
+        # Bucket 1 (2000-3999): sum(20.2, 30.3) = 50.5, mid timestamp = 3000
+        assert result[1] == [3000, b'50.5']
+        # Bucket 2 (4000-5999): sum(40.4, 50.5) = 90.9, mid timestamp = 5000
+        assert result[2] == [5000, b'90.9']
+
+    def test_aggregation_empty_buckets(self):
         """Test TS.RANGE aggregation with ALIGN, BUCKETTIMESTAMP, EMPTY"""
 
         self.setup_data()
@@ -145,14 +162,11 @@ class TestTimeSeriesRange(ValkeyTimeSeriesTestCaseBase):
     def test_range_non_existent_series(self):
         """Test TS.RANGE on a non-existent key"""
 
-        self.setup_data()
+        with pytest.raises(ResponseError) as excinfo:
+            self.client.execute_command('TS.RANGE', 'ts_nonexistent', '-', '+')
 
-        result = self.client.execute_command('TS.RANGE', 'ts_nonexistent', '-', '+')
-        assert result == []
+        assert "key does not exist" in str(excinfo.value).lower()
 
-        # With aggregation and EMPTY - should still be empty as key doesn't exist
-        result_agg = self.client.execute_command('TS.RANGE', 'ts_nonexistent', 0, 1000, 'AGGREGATION', 'SUM', 500, 'EMPTY')
-        assert result_agg == []
 
     def test_range_edge_cases(self):
         """Test TS.RANGE with edge case timestamps"""
@@ -196,4 +210,4 @@ class TestTimeSeriesRange(ValkeyTimeSeriesTestCaseBase):
         # Invalid filter values
         with pytest.raises(ResponseError) as excinfo:
             self.client.execute_command('TS.RANGE', 'ts1', '-', '+', 'FILTER_BY_VALUE', 'a', 'b')
-        assert "not a valid float" in str
+        assert "cannot parse value filter" in str(excinfo.value).lower()
