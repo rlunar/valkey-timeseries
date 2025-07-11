@@ -1,0 +1,15 @@
+[target.'cfg(target_arch = "x86_64")']
+rustflags = ["-C", "target-feature=+bmi1,+bmi2,+avx2"]
+
+[profile.dev]
+opt-level = 0
+debug = 2
+debug-assertions = true
+
+[profile.release]
+lto = true            # Link-time optimization
+codegen-units = 1     # Better optimization (slower compile)
+opt-level = 3         # Maximum optimization
+panic = "abort"       # Smaller binary size
+strip = true
+

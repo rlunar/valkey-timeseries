@@ -52,18 +52,6 @@ test-case = "3.3.1"
 name="valkey_timeseries"
 crate-type=["cdylib"]
 
-[profile.dev]
-opt-level = 0
-debug = 2
-debug-assertions = true
-
-[profile.release]
-lto = true            # Link-time optimization
-codegen-units = 1     # Better optimization (slower compile)
-opt-level = 3         # Maximum optimization
-panic = "abort"       # Smaller binary size
-strip = true
-
 [features]
 default = ["min-valkey-compatibility-version-8-0", "croaring/alloc"]
 enable-system-alloc = ["valkey-module/enable-system-alloc"]
