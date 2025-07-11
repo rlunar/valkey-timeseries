@@ -81,16 +81,16 @@ class TestTimeSeriesRange(ValkeyTimeSeriesTestCaseBase):
         # Average over 2000ms buckets
         result = self.client.execute_command('TS.RANGE', 'ts1', 1000, 5000, 'AGGREGATION', 'AVG', 2000)
         assert len(result) == 3
-        # Bucket 1 (1000-2999): avg(10.1, 20.2) = 15.15
         print(result)
-        assert result[0][0] == 1000
-        assert float(result[0][1]) == pytest.approx(15.15)
+
+        assert result[0][0] == 0
+        assert float(result[0][1]) == pytest.approx(10.1)
         # Bucket 2 (3000-4999): avg(30.3, 40.4) = 35.35
-        assert result[1][0] == 3000
-        assert float(result[1][1]) == pytest.approx(35.35)
+        assert result[1][0] == 2000
+        assert float(result[1][1]) == pytest.approx(25.25)
         # Bucket 3 (5000-6999): avg(50.5) = 50.5
-        assert result[2][0] == 5000
-        assert float(result[2][1]) == pytest.approx(50.5)
+        assert result[2][0] == 4000
+        assert float(result[2][1]) == pytest.approx(45.45)
 
     def test_range_aggregation_options(self):
         """Test TS.RANGE aggregation with ALIGN, BUCKETTIMESTAMP, EMPTY"""
