@@ -121,7 +121,9 @@ pub fn process_mrange_query(
     let mut result = process_mrange_command(series_metas, options, is_clustered);
 
     if reverse {
-        result.reverse();
+        for series in result.iter_mut() {
+            series.samples.reverse();
+        }
     }
 
     Ok(result)
