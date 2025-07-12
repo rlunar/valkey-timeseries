@@ -298,6 +298,45 @@ mod tests {
     }
 
     #[test]
+    fn test_range_with_aggregation_1() {
+        // let mut series = create_test_series();
+        let mut series = TimeSeries::with_options(TimeSeriesOptions::default()).unwrap();
+        // Add samples at 1000 ms intervals
+        for i in 0..100 {
+            let ts = (i + 1) * 1000;
+            let value = (i + 1) as f64 * 10.;
+            series.add(ts, value, None);
+        }
+
+        // let aggr_options = AggregationOptions {
+        //     aggregation: Aggregation::Sum,
+        //     bucket_duration: 2000,
+        //     timestamp_output: BucketTimestamp::Start,
+        //     alignment: BucketAlignment::Start,
+        //     report_empty: true,
+        // };
+
+        let range_options = RangeOptions {
+            date_range: TimestampRange {
+                start: TimestampValue::Earliest,
+                end: TimestampValue::Latest,
+            },
+            value_filter: Some(ValueFilter::new(20.0, 50.0).unwrap()),
+            ..Default::default()
+        };
+
+        let result = get_range(&series, &range_options, true);
+
+        assert_eq!(result.len(), 5);
+        // First bucket [100-120): values 0.0 + 1.5 = 1.5
+        assert_eq!(result[0].timestamp, 100);
+        assert_eq!(result[0].value, 1.5);
+        // Second bucket [120-140): values 3.0 + 4.5 = 7.5
+        assert_eq!(result[1].timestamp, 120);
+        assert_eq!(result[1].value, 7.5);
+    }
+
+    #[test]
     fn test_get_range_with_value_filter() {
         let series = create_test_series();
         let range_options = RangeOptions {
