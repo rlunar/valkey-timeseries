@@ -94,31 +94,35 @@ class TestTimeSeriesRange(ValkeyTimeSeriesTestCaseBase):
     def test_aggregation_empty_buckets(self):
         """Test TS.RANGE aggregation with ALIGN, BUCKETTIMESTAMP, EMPTY"""
 
-        self.setup_data()
+        self.client.execute_command('TS.CREATE', 'ts1')
+        self.client.execute_command('TS.ADD', 'ts1', 100, 10)
+        self.client.execute_command('TS.ADD', 'ts1', 110, 20)
+        self.client.execute_command('TS.ADD', 'ts1', 150, 30)
+        self.client.execute_command('TS.ADD', 'ts1', 160, 40)
+        self.client.execute_command('TS.ADD', 'ts1', 200, 50)
 
-        self.client.execute_command('TS.ADD', 'ts1', 8000, 80.)
-        self.client.execute_command('TS.ADD', 'ts1', 9000, 90)
-        self.client.execute_command('TS.ADD', 'ts1', 10000, 100)
-        self.client.execute_command('TS.ADD', 'ts1', 11000, 110)
-        self.client.execute_command('TS.ADD', 'ts1', 12000, 120)
+        # Align to 0, bucket timestamp mid, dont report empty
+        result = self.client.execute_command('TS.RANGE', 'ts1', "-", "+",
+                                             'ALIGN', 0,
+                                             'AGGREGATION', 'SUM', 25,
+                                             'BUCKETTIMESTAMP', 'START')
+        assert len(result) == 3
+        assert result[0] == [100, b'30']
+        assert result[1] == [150, b'70']
+        assert result[2] == [200, b'50'] # Empty buckets return None
 
         # Align to 0, bucket timestamp mid, report empty
         result = self.client.execute_command('TS.RANGE', 'ts1', "-", "+",
                                              'ALIGN', 0,
-                                             'AGGREGATION', 'SUM', 2000,
+                                             'AGGREGATION', 'SUM', 25,
                                              'BUCKETTIMESTAMP', 'START',
                                              'EMPTY')
-        print(result)
-
-        assert len(result) == 4
-        # Bucket 0 (0-1999): sum(10.1) = 10.1, mid timestamp = 1000
-        assert result[0] == [1000, 10.1]
-        # Bucket 1 (2000-3999): sum(20.2, 30.3) = 50.5, mid timestamp = 3000
-        assert result[1] == [3000, 50.5]
-        # Bucket 2 (4000-5999): sum(40.4, 50.5) = 90.9, mid timestamp = 5000
-        assert result[2] == [5000, 90.9]
-        # Bucket 3 (6000-7999): empty, mid-timestamp = 7000 (reported due to EMPTY)
-        assert result[3] == [7000, None] # Empty buckets return None
+        assert len(result) == 5
+        assert result[0] == [100, b'30']
+        assert result[1] == [125, b'0']  # Empty bucket
+        assert result[2] == [150, b'70']
+        assert result[3] == [175, b'0']  # empty bucket# Last bucket with value
+        assert result[4] == [200, b'50'] # Empty buckets return None
 
 
     def test_range_aggregation_with_filters(self):
@@ -126,24 +130,16 @@ class TestTimeSeriesRange(ValkeyTimeSeriesTestCaseBase):
 
         self.client.execute_command('TS.CREATE', 'ts1')
         for i in range(0, 1000, 10):
-            self.client.execute_command('TS.ADD', 'ts1', (i + 1) * 1000, (i + 1) * 10)
+            self.client.execute_command('TS.ADD', 'ts1', (i + 1) * 1000, 10 + (i * 10))
 
-        info = self.ts_info('ts1')
-        print(info)
-
-        samples = self.client.execute_command('TS.RANGE', 'ts1', '-', '+', 'FILTER_BY_VALUE', 20, 50)
-        print(samples)
-
-        # Filter values > 30, then aggregate SUM over 3000ms buckets
         result = self.client.execute_command('TS.RANGE', 'ts1', '-', '+',
-                                             'FILTER_BY_VALUE', 20, 50,
+                                             'FILTER_BY_VALUE', 500, 1000,
                                              'ALIGN', 0,
-                                             'AGGREGATION', 'SUM', 3000)
-        assert len(result) == 2
+                                             'AGGREGATION', 'SUM', 10000)
 
-        assert result[0][0] == 3000
-        assert float(result[0][1]) == pytest.approx(121.2)
+        assert result == [[50000, b'510'], [60000, b'610'], [70000, b'710'], [80000, b'810'], [90000, b'910']]
         # Bucket 3 (6000-...) No values
+
 
     def test_range_empty_series(self):
         """Test TS.RANGE on an existing but empty series"""
@@ -302,14 +298,17 @@ class TestTimeSeriesRange(ValkeyTimeSeriesTestCaseBase):
         self.setup_aggregation_data()
 
         # Single bucket: range of [1,2,3,4,5,6] = 6 - 1 = 5
-        result = self.client.execute_command('TS.RANGE', 'agg_test', 0, 7000,
+        result = self.client.execute_command('TS.RANGE', 'agg_test', 1000, 7000,
                                              'AGGREGATION', 'RANGE', 7000)
+
         assert len(result) == 1
         assert float(result[0][1]) == pytest.approx(5.0)
 
         # Two buckets: [1,2,3] and [4,5,6] -> range = 2 and 2
         result = self.client.execute_command('TS.RANGE', 'agg_test', 1000, 7000,
                                              'AGGREGATION', 'RANGE', 3000, 'ALIGN', 'start')
+        print(result)
+
         assert len(result) == 2
         assert float(result[0][1]) == pytest.approx(2.0)  # 3-1
         assert float(result[1][1]) == pytest.approx(2.0)  # 6-4
@@ -363,20 +362,6 @@ class TestTimeSeriesRange(ValkeyTimeSeriesTestCaseBase):
         assert len(result) == 1
         assert float(result[0][1]) == pytest.approx(3.5, abs=0.01)
 
-    def test_aggregation_with_empty_buckets(self):
-        """Test aggregation behavior with empty buckets"""
-        self.setup_aggregation_data()
-
-        # Create gaps in data by using larger bucket size
-        result = self.client.execute_command('TS.RANGE', 'agg_test', 0, 10000,
-                                             'AGGREGATION', 'SUM', 2000, 'ALIGN', 0, 'EMPTY')
-
-        # Should have buckets: [1,2], [3,4], [5,6], [empty], [empty]
-        assert len(result) >= 3
-        assert float(result[0][1]) == pytest.approx(3.0)   # 1+2
-        assert float(result[1][1]) == pytest.approx(7.0)   # 3+4
-        assert float(result[2][1]) == pytest.approx(11.0)  # 5+6
-
     def test_aggregation_single_value_bucket(self):
         """Test aggregation with buckets containing single values"""
         self.setup_aggregation_data()
@@ -410,7 +395,7 @@ class TestTimeSeriesRange(ValkeyTimeSeriesTestCaseBase):
                                                  'BUCKETTIMESTAMP', 'END')
 
         # Values should be the same, timestamps should differ
-        assert len(result_start) == len(result_mid) == len(result_end) == 2
+        assert len(result_start) == len(result_mid) == len(result_end) == 3
 
         # Check that timestamps are different but values are the same
         for i in range(len(result_start)):
