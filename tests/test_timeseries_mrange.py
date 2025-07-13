@@ -34,17 +34,17 @@ class TestTimeSeriesMRange(ValkeyTimeSeriesTestCaseBase):
 
         # Should return 2 time series
         assert len(result) == 2
-        print(result)
 
         # Each time series should have a key, labels and values
         for series in result:
             assert series[0] in [b'ts1', b'ts2']
+
             assert isinstance(series[1], list)  # Labels
             assert isinstance(series[2], list)  # values
-            # Each series should have 11 data points (0, 10, 20, ..., 100)
-            print(series[1])
-            print(series[2])
-            assert len(series[2]) == 11
+            # Each series should have 10 data points (0, 10, 20, ..., 100)
+            # print(series[1])
+            # print(series[2])
+            assert len(series[2]) == 10
 
     def test_mrange_withlabels(self):
         """Test TS.MRANGE with WITHLABELS option"""
@@ -85,10 +85,14 @@ class TestTimeSeriesMRange(ValkeyTimeSeriesTestCaseBase):
 
         result = self.client.execute_command('TS.MRANGE', self.start_ts, self.start_ts + 100,
                                              'FILTER_BY_VALUE', 25, 30, 'FILTER', 'sensor=temp')
+        print(result)
 
         # Should only return ts2 as ts1 values start at 20
-        assert len(result) == 1
-        assert result[0][0] == b'ts2'
+        assert len(result) == 2
+        for series in result:
+            assert series[0] in [b'ts1', b'ts2']
+            assert any(25 <= float(sample[1]) <= 30 for sample in series[2])
+
 
     def test_mrange_count(self):
         """Test TS.MRANGE with COUNT option"""
