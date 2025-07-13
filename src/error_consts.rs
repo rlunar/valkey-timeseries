@@ -33,6 +33,7 @@ pub const INVALID_NUMBER: &str = "TSDB: invalid number";
 pub const INVALID_SERIES_SELECTOR: &str = "TSDB: series selector is invalid";
 pub const INVALID_STEP_DURATION: &str = "TSDB: invalid step duration";
 pub const INVALID_TIMESTAMP: &str = "TSDB: invalid timestamp.";
+pub const UNKNOWN_AGGREGATION_TYPE: &str = "TSDB: unknown aggregation type";
 pub const INVALID_START_TIMESTAMP: &str = "TSDB: invalid start timestamp.";
 pub const INVALID_END_TIMESTAMP: &str = "TSDB: invalid end timestamp.";
 pub const NEGATIVE_TIMESTAMP: &str = "TSDB: timestamps cannot be negative.";

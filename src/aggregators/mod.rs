@@ -156,7 +156,7 @@ impl TryFrom<&str> for Aggregation {
 
         match value {
             Some(agg) => Ok(agg),
-            None => Err(ValkeyError::Str("TSDB: invalid AGGREGATION value")),
+            None => Err(ValkeyError::Str(error_consts::UNKNOWN_AGGREGATION_TYPE)),
         }
     }
 }

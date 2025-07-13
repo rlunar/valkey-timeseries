@@ -550,7 +550,7 @@ pub fn parse_aggregation_options(
     // AGGREGATION token already seen
     let agg_str = args
         .next_str()
-        .map_err(|_e| ValkeyError::Str("ERR: Error parsing AGGREGATION"))?;
+        .map_err(|_e| ValkeyError::Str(error_consts::UNKNOWN_AGGREGATION_TYPE))?;
     let aggregator = Aggregation::try_from(agg_str)?;
     let bucket_duration = parse_duration_arg(&args.next_arg()?)
         .map_err(|_e| ValkeyError::Str("Error parsing bucketDuration"))?;
@@ -739,6 +739,24 @@ pub fn parse_range_options(args: &mut CommandArgIterator) -> ValkeyResult<RangeO
                 let msg = format!("ERR invalid argument '{arg}'");
                 return Err(ValkeyError::String(msg));
             }
+        }
+    }
+
+    // according to docs, align cannot be Start if start time is Earliest, or End if end time is Latest
+    if let Some(aggregation) = &options.aggregation {
+        if options.date_range.start == TimestampValue::Earliest
+            && aggregation.alignment == BucketAlignment::Start
+        {
+            return Err(ValkeyError::Str(
+                "TSDB: cannot use 'start' align with '-' range start timestamp",
+            ));
+        }
+        if options.date_range.end == TimestampValue::Latest
+            && aggregation.alignment == BucketAlignment::End
+        {
+            return Err(ValkeyError::Str(
+                "TSDB: cannot use 'end' align with '+' range end timestamp",
+            ));
         }
     }
 
