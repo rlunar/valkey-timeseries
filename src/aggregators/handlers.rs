@@ -152,9 +152,14 @@ impl AggregationHandler for AggRange {
         self.max = t.2;
     }
     fn update(&mut self, value: Value) {
-        self.max = self.max.max(value);
-        self.min = self.min.min(value);
-        self.init = true;
+        if !self.init {
+            self.init = true;
+            self.min = value;
+            self.max = value;
+        } else {
+            self.max = self.max.max(value);
+            self.min = self.min.min(value);
+        }
     }
     fn reset(&mut self) {
         self.max = 0.;

@@ -586,6 +586,43 @@ mod tests {
         );
     }
 
+    #[test]
+    fn test_range_aggregation_basic() {
+        let samples = vec![
+            Sample::new(10, 1.0),
+            Sample::new(15, 5.0),
+            Sample::new(20, 2.0),
+            Sample::new(25, 8.0),
+            Sample::new(30, 3.0),
+            Sample::new(35, 7.0),
+        ];
+
+        let options = AggregationOptions {
+            aggregation: Aggregation::Range,
+            bucket_duration: 10,
+            timestamp_output: BucketTimestamp::Start,
+            alignment: BucketAlignment::Start,
+            report_empty: false,
+        };
+
+        let iterator = AggregateIterator::new(samples.into_iter(), &options, 0);
+        let result: Vec<Sample> = iterator.collect();
+
+        assert_eq!(result.len(), 3);
+
+        // First bucket [10, 20): contains 1.0 and 5.0, range = 5.0 - 1.0 = 4.0
+        assert_eq!(result[0].timestamp, 10);
+        assert_eq!(result[0].value, 4.0);
+
+        // Second bucket [20, 30): contains 2.0 and 8.0, range = 8.0 - 2.0 = 6.0
+        assert_eq!(result[1].timestamp, 20);
+        assert_eq!(result[1].value, 6.0);
+
+        // Third bucket [30, 40): contains 3.0 and 7.0, range = 7.0 - 3.0 = 4.0
+        assert_eq!(result[2].timestamp, 30);
+        assert_eq!(result[2].value, 4.0);
+    }
+
     // #[test]
     // fn test_alignment_with_offset() {
     //     let samples = vec![
