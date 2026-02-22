@@ -37,9 +37,9 @@ pub fn process_mrange_query(
 
     let series_metas: Vec<MRangeSeriesMeta> = series_guards
         .iter()
-        .map(|guard| MRangeSeriesMeta {
+        .map(|(guard, key)| MRangeSeriesMeta {
             series: guard,
-            source_key: guard.get_key().to_string(),
+            source_key: key.to_string(),
             group_label_value: None,
             latest: {
                 // This is done upfront to enable parallel series processing below

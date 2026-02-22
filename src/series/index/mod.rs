@@ -119,10 +119,9 @@ pub fn with_matched_series<F, STATE>(
 where
     F: FnMut(&mut STATE, &TimeSeries, ValkeyString),
 {
-    let mut matched_series = series_by_selectors(ctx, &filter.matchers, filter.date_range)?;
-    for guard in matched_series.iter_mut() {
-        let series = guard.get_series();
-        let key = guard.key_inner.safe_clone(ctx);
+    let matched_series = series_by_selectors(ctx, &filter.matchers, filter.date_range)?;
+    for (guard, key) in matched_series.into_iter() {
+        let series = guard.as_ref();
         f(acc, series, key);
     }
     Ok(())

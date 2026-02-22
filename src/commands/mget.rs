@@ -125,7 +125,8 @@ pub fn process_mget_request(
     let mut series = Vec::with_capacity(8);
 
     let opts: MatchFilterOptions = options.filters.into();
-    with_matched_series(ctx, &mut series, &opts, move |acc, series, key| {
+
+    with_matched_series(ctx, &mut series, &opts, move |acc, series, series_key| {
         let sample = if options.latest {
             get_latest_compaction_sample(ctx, series).or(series.last_sample)
         } else {
@@ -139,7 +140,7 @@ pub fn process_mget_request(
         acc.push(MGetSeriesData {
             sample,
             labels,
-            series_key: key,
+            series_key,
         });
     })?;
 

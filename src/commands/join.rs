@@ -31,8 +31,9 @@ pub fn join(ctx: &Context, args: Vec<ValkeyString>) -> ValkeyResult {
 
     // In both cases we pass true for must_exist, meaning that if the series does not exist, we will
     // propagate an error. Because of this, unwrap is safe to use here.
-    let left_series = get_timeseries(ctx, left_key, Some(AclPermissions::ACCESS), true)?.unwrap();
-    let right_series = get_timeseries(ctx, right_key, Some(AclPermissions::ACCESS), true)?.unwrap();
+    let left_series = get_timeseries(ctx, &left_key, Some(AclPermissions::ACCESS), true)?.unwrap();
+    let right_series =
+        get_timeseries(ctx, &right_key, Some(AclPermissions::ACCESS), true)?.unwrap();
 
     let result = process_join(&left_series, &right_series, &options)?;
     Ok(result.into())

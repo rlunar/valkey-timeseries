@@ -87,7 +87,7 @@ class TestTimeseriesInfo(ValkeyTimeSeriesTestCaseBase):
         key = 'string_key'
         self.client.set(key, 'hello world')
 
-        with pytest.raises(ResponseError, match="wrong Valkey type"):
+        with pytest.raises(ResponseError, match="WRONGTYPE Operation"):
             self.client.execute_command('TS.INFO', key)
 
     def test_info_debug(self):

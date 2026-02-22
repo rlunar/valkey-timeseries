@@ -26,7 +26,7 @@ fn reindex_series(ctx: &Context, series: &TimeSeries, key: &[u8]) -> ValkeyResul
 fn handle_key_rename(ctx: &Context, _old_key: &[u8], new_key: &[u8]) {
     let index = get_timeseries_index(ctx);
     let key = ctx.create_string(new_key);
-    let Ok(Some(series)) = get_timeseries(ctx, key, None, false) else {
+    let Ok(Some(series)) = get_timeseries(ctx, &key, None, false) else {
         logging::log_warning("Failed to load series for key rename");
         return;
     };

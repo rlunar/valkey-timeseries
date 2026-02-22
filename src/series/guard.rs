@@ -1,69 +1,51 @@
 use crate::error_consts;
 use crate::series::TimeSeries;
-use crate::series::acl::check_key_permissions;
 use crate::series::series_data_type::VK_TIME_SERIES_TYPE;
 use std::ops::{Deref, DerefMut};
-use valkey_module::key::ValkeyKey;
-use valkey_module::{AclPermissions, Context, ValkeyError, ValkeyResult, ValkeyString};
+use valkey_module::{Context, ValkeyError, ValkeyResult, ValkeyString};
 
-pub struct SeriesGuard {
-    pub(super) key_inner: ValkeyString,
-    pub(super) key: ValkeyKey,
+pub struct SeriesGuard<'a> {
+    series: *const TimeSeries,
+    _marker: std::marker::PhantomData<&'a TimeSeries>,
 }
 
-impl SeriesGuard {
-    pub fn new(
-        ctx: &Context,
-        key: ValkeyString,
-        acls: Option<AclPermissions>,
-    ) -> ValkeyResult<SeriesGuard> {
-        // check permissions if provided
-        if let Some(permissions) = acls {
-            check_key_permissions(ctx, &key, &permissions)?;
-        }
-        let valkey_key = ctx.open_key(&key);
-        // get series from valkey
-        match valkey_key.get_value::<TimeSeries>(&VK_TIME_SERIES_TYPE) {
-            Ok(Some(_)) => {
-                let guard = SeriesGuard::open(ctx, key);
-                Ok(guard)
+impl<'a> SeriesGuard<'a> {
+    pub(crate) fn from_key(ctx: &'a Context, key: &ValkeyString) -> ValkeyResult<Self> {
+        let value_key = ctx.open_key(key);
+        match value_key.get_value::<TimeSeries>(&VK_TIME_SERIES_TYPE) {
+            Ok(Some(series)) => {
+                // Cast to raw pointer before value_key is dropped, mirroring SeriesGuardMut
+                let ptr = series as *const TimeSeries;
+                // SAFETY: ptr points into Valkey's keyspace, valid for 'a (tied to ctx lifetime)
+                Ok(unsafe { SeriesGuard::from_raw(ptr) })
             }
             Ok(None) => Err(ValkeyError::Str(error_consts::KEY_NOT_FOUND)),
-            Err(e) => Err(e),
+            Err(_e) => Err(ValkeyError::WrongType),
         }
     }
 
-    pub(crate) fn open(ctx: &Context, key: ValkeyString) -> Self {
-        let key_ = ValkeyKey::open(ctx.ctx, &key);
-        SeriesGuard {
-            key: key_,
-            key_inner: key,
+    /// # Safety
+    /// The pointer must remain valid for lifetime 'a.
+    unsafe fn from_raw(series: *const TimeSeries) -> Self {
+        Self {
+            series,
+            _marker: std::marker::PhantomData,
         }
-    }
-
-    pub fn get_series(&self) -> &TimeSeries {
-        self.key
-            .get_value::<TimeSeries>(&VK_TIME_SERIES_TYPE)
-            .expect("Key existence should be checked before deref")
-            .unwrap()
-    }
-
-    pub fn get_key(&self) -> &ValkeyString {
-        &self.key_inner
     }
 }
 
-impl Deref for SeriesGuard {
+impl<'a> Deref for SeriesGuard<'a> {
     type Target = TimeSeries;
 
     fn deref(&self) -> &Self::Target {
-        self.get_series()
+        // SAFETY: pointer is valid for 'a as guaranteed by construction
+        unsafe { &*self.series }
     }
 }
 
-impl AsRef<TimeSeries> for SeriesGuard {
+impl<'a> AsRef<TimeSeries> for SeriesGuard<'a> {
     fn as_ref(&self) -> &TimeSeries {
-        self.get_series()
+        self.deref()
     }
 }
 
@@ -72,6 +54,15 @@ pub struct SeriesGuardMut<'a> {
 }
 
 impl SeriesGuardMut<'_> {
+    pub fn from_key(ctx: &'_ Context, key: &ValkeyString) -> ValkeyResult<Self> {
+        let value_key = ctx.open_key_writable(key);
+        match value_key.get_value::<TimeSeries>(&VK_TIME_SERIES_TYPE) {
+            Ok(Some(series)) => Ok(SeriesGuardMut { series }),
+            Ok(None) => Err(ValkeyError::Str(error_consts::KEY_NOT_FOUND)),
+            Err(_e) => Err(ValkeyError::WrongType),
+        }
+    }
+
     pub fn get_series_mut(&mut self) -> &mut TimeSeries {
         self.deref_mut()
     }

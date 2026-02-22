@@ -21,16 +21,16 @@ use crate::error_consts;
 use crate::labels::filters::SeriesSelector;
 use crate::series::acl::{check_key_read_permission, has_all_keys_permissions};
 use crate::series::request_types::MetaDateRangeFilter;
-use crate::series::{SeriesGuard, SeriesRef, TimeSeries};
+use crate::series::{SeriesGuard, SeriesRef, TimeSeries, get_timeseries};
 use blart::AsBytes;
 use orx_parallel::{IterIntoParIter, ParIter};
 use valkey_module::{AclPermissions, Context, ValkeyError, ValkeyResult, ValkeyString};
 
-pub fn series_by_selectors(
-    ctx: &Context,
+pub fn series_by_selectors<'a>(
+    ctx: &'a Context,
     selectors: &[SeriesSelector],
     range: Option<MetaDateRangeFilter>,
-) -> ValkeyResult<Vec<SeriesGuard>> {
+) -> ValkeyResult<Vec<(SeriesGuard<'a>, ValkeyString)>> {
     if selectors.is_empty() {
         return Ok(Vec::new());
     }
@@ -68,7 +68,7 @@ fn collect_series_keys(
 ) -> ValkeyResult<Vec<ValkeyString>> {
     if let Some(date_range) = date_range {
         let series = collect_series_from_postings(ctx, postings, ids, Some(date_range))?;
-        let keys = series.into_iter().map(|g| g.key_inner).collect();
+        let keys = series.into_iter().map(|g| g.1).collect();
         return Ok(keys);
     }
 
@@ -87,19 +87,21 @@ fn collect_series_keys(
     Ok(keys)
 }
 
-pub(crate) fn collect_series_from_postings(
-    ctx: &Context,
+pub(crate) fn collect_series_from_postings<'a>(
+    ctx: &'a Context,
     postings: &Postings,
     ids: impl Iterator<Item = SeriesRef>,
     date_range: Option<MetaDateRangeFilter>,
-) -> ValkeyResult<Vec<SeriesGuard>> {
+) -> ValkeyResult<Vec<(SeriesGuard<'a>, ValkeyString)>> {
     let capacity_estimate = ids.size_hint().1.unwrap_or(8);
     let iter = ids.filter_map(|id| postings.get_key_by_id(id));
 
-    let mut result: Vec<SeriesGuard> = Vec::with_capacity(capacity_estimate);
+    let mut result: Vec<(SeriesGuard, ValkeyString)> = Vec::with_capacity(capacity_estimate);
     for key in iter {
-        if let Some(guard) = get_guard_from_key(ctx, key)? {
-            result.push(guard);
+        let k = ctx.create_string(key.as_bytes());
+        let perms = Some(AclPermissions::ACCESS);
+        if let Some(guard) = get_timeseries(ctx, &k, perms, false)? {
+            result.push((guard, k));
         }
     }
 
@@ -129,7 +131,8 @@ pub(crate) fn collect_series_from_postings(
 
     if result.len() == 1 {
         // SAFETY: we have already checked above that we have at least one element.
-        return if unsafe { matches_date_range(result.get_unchecked(0), start, end, exclude) } {
+        let series = unsafe { result.get_unchecked(0).0.as_ref() };
+        return if matches_date_range(series, start, end, exclude) {
             Ok(result)
         } else {
             Ok(Vec::new())
@@ -141,11 +144,11 @@ pub(crate) fn collect_series_from_postings(
     // need to collect IDs first and then reconstruct the guards from the original vector.
     let matching_ids: Vec<u64> = result
         .iter()
-        .map(|guard| (guard.get_series(), guard.id))
+        .map(|guard| guard.0.as_ref())
         .iter_into_par()
-        .filter_map(|(series, id)| {
+        .filter_map(|series| {
             if matches_date_range(series, start, end, exclude) {
-                Some(id)
+                Some(series.id)
             } else {
                 None
             }
@@ -156,12 +159,14 @@ pub(crate) fn collect_series_from_postings(
         0 => Ok(Vec::new()),                  // none match
         n if n == result.len() => Ok(result), // all match
         n if n < 32 => {
-            result.retain(|guard| matching_ids.contains(&guard.id));
+            result.retain(|(guard, _)| matching_ids.contains(&guard.id));
             Ok(result)
         }
         _ => {
-            let mut guard_map: IntMap<u64, SeriesGuard> =
-                result.into_iter().map(|guard| (guard.id, guard)).collect();
+            let mut guard_map: IntMap<u64, (SeriesGuard, ValkeyString)> = result
+                .into_iter()
+                .map(|(guard, key)| (guard.id, (guard, key)))
+                .collect();
 
             Ok(matching_ids
                 .into_iter()
@@ -171,32 +176,13 @@ pub(crate) fn collect_series_from_postings(
     }
 }
 
-pub(super) fn get_guard_from_key(
-    ctx: &Context,
+pub(super) fn get_guard_from_key<'a>(
+    ctx: &'a Context,
     key: &KeyType,
-) -> ValkeyResult<Option<SeriesGuard>> {
+) -> ValkeyResult<Option<SeriesGuard<'a>>> {
     let real_key = ctx.create_string(key.as_bytes());
     let perms = Some(AclPermissions::ACCESS);
-    match SeriesGuard::new(ctx, real_key, perms) {
-        Ok(g) => Ok(Some(g)),
-        Err(err) => {
-            let msg = err.to_string();
-            if msg.contains("permission") {
-                return Err(ValkeyError::Str(
-                    error_consts::ALL_KEYS_READ_PERMISSION_ERROR,
-                ));
-            }
-            if msg.as_str() == error_consts::KEY_NOT_FOUND {
-                let msg = format!(
-                    "Failed to find series key in index: {}",
-                    str::from_utf8(key.as_bytes()).unwrap_or("<invalid utf8>")
-                );
-                ctx.log_warning(&msg);
-                return Ok(None);
-            }
-            Err(err)
-        }
-    }
+    get_timeseries(ctx, &real_key, perms, false)
 }
 
 pub fn count_matched_series(

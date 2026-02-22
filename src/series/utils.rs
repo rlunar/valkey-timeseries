@@ -46,13 +46,16 @@ pub fn with_timeseries_mut<R>(
     f(&mut series)
 }
 
-pub fn get_timeseries(
-    ctx: &Context,
-    key: ValkeyString,
+pub fn get_timeseries<'a>(
+    ctx: &'a Context,
+    key: &ValkeyString,
     permissions: Option<AclPermissions>,
     must_exist: bool,
-) -> ValkeyResult<Option<SeriesGuard>> {
-    match SeriesGuard::new(ctx, key, permissions) {
+) -> ValkeyResult<Option<SeriesGuard<'a>>> {
+    if let Some(permissions) = permissions {
+        check_key_permissions(ctx, key, &permissions)?;
+    }
+    match SeriesGuard::from_key(ctx, key) {
         Ok(guard) => Ok(Some(guard)),
         Err(e) => match e {
             ValkeyError::Str(err) if err == error_consts::KEY_NOT_FOUND => {
