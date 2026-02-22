@@ -291,7 +291,7 @@ fn fetch_series_batch(
     pred: fn(&TimeSeries) -> bool,
 ) -> Vec<SeriesGuardMut<'_>> {
     let (result, stale_ids) = with_timeseries_postings(ctx, |postings| {
-        let all_postings = postings.all_postings();
+        let all_postings = &postings.all_postings;
         let mut cursor = all_postings.cursor();
         cursor.reset_at_or_after(start_id);
 

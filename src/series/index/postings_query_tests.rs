@@ -43,7 +43,6 @@ mod tests {
             for label in labels.iter() {
                 p.add_posting_for_label_value(series_ref, &label.name, &label.value);
             }
-            p.add_id_to_all_postings(series_ref);
         });
 
         labels_map.insert(series_ref, labels.to_vec());

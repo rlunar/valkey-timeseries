@@ -18,10 +18,7 @@ use std::collections::BTreeSet;
 use std::sync::LazyLock;
 use valkey_module::{ValkeyError, ValkeyResult};
 
-pub(super) const ALL_POSTINGS_KEY_NAME: &str = "$_ALL_P0STINGS_";
 pub(super) static EMPTY_BITMAP: LazyLock<PostingsBitmap> = LazyLock::new(PostingsBitmap::new);
-pub(super) static ALL_POSTINGS_KEY: LazyLock<IndexKey> =
-    LazyLock::new(|| IndexKey::from(ALL_POSTINGS_KEY_NAME));
 
 pub type PostingsBitmap = Bitmap64;
 // label
@@ -43,6 +40,8 @@ pub struct Postings {
     /// happens when the index is inconsistent (value does not exist in the db but exists in the index)
     /// Keep track and cleanup from the index during a gc pass.
     pub(super) stale_ids: PostingsBitmap,
+    /// Set of all timeseries ids in the index. This is used to optimize queries that are subtractive.
+    pub(crate) all_postings: PostingsBitmap,
 }
 
 impl Default for Postings {
@@ -51,6 +50,7 @@ impl Default for Postings {
             label_index: PostingsIndex::new(),
             id_to_key: IntMap::default(),
             stale_ids: PostingsBitmap::default(),
+            all_postings: PostingsBitmap::default(),
         }
     }
 }
@@ -69,6 +69,7 @@ impl Postings {
         std::mem::swap(&mut self.label_index, &mut other.label_index);
         std::mem::swap(&mut self.id_to_key, &mut other.id_to_key);
         std::mem::swap(&mut self.stale_ids, &mut other.stale_ids);
+        std::mem::swap(&mut self.all_postings, &mut other.all_postings);
     }
 
     pub(super) fn remove_posting_for_label_value(
@@ -76,27 +77,16 @@ impl Postings {
         label: &str,
         value: &str,
         ts_id: SeriesRef,
-    ) {
+    ) -> bool {
         let key = IndexKey::for_label_value(label, value);
         if let Some(bmp) = self.label_index.get_mut(&key) {
-            bmp.remove(ts_id);
-            if bmp.is_empty() {
+            let removed = bmp.remove_checked(ts_id);
+            if removed && bmp.is_empty() {
                 self.label_index.remove(&key);
             }
+            return removed;
         }
-    }
-
-    fn remove_posting_by_id_and_labels<T: SeriesLabel>(&mut self, id: SeriesRef, labels: &[T]) {
-        self.remove_id_from_all_postings(id);
-
-        // should never happen, but just in case
-        if labels.is_empty() {
-            return;
-        }
-
-        for label in labels.iter() {
-            self.remove_posting_for_label_value(label.name(), label.value(), id);
-        }
+        false
     }
 
     pub(super) fn add_posting_for_label_value(
@@ -106,40 +96,19 @@ impl Postings {
         value: &str,
     ) -> bool {
         let key = IndexKey::for_label_value(label, value);
+        self.all_postings.add(ts_id);
         match self.label_index.entry(key) {
             ARTEntry::Occupied(mut entry) => {
                 entry.get_mut().add(ts_id);
                 false
             }
             ARTEntry::Vacant(entry) => {
-                let mut bmp = PostingsBitmap::new();
-                bmp.add(ts_id);
-                entry.insert(bmp);
+                let mut bitmap = PostingsBitmap::new();
+                bitmap.add(ts_id);
+                entry.insert(bitmap);
                 true
             }
         }
-    }
-
-    pub(super) fn add_id_to_all_postings(&mut self, id: SeriesRef) {
-        let key = &*ALL_POSTINGS_KEY;
-        match self.label_index.entry(key.clone()) {
-            ARTEntry::Occupied(mut e) => e.get_mut().add(id),
-            ARTEntry::Vacant(e) => {
-                let mut bmp = PostingsBitmap::new();
-                bmp.add(id);
-                e.insert(bmp);
-            }
-        }
-    }
-
-    fn remove_id_from_all_postings(&mut self, id: SeriesRef) {
-        if let Some(bmp) = self.label_index.get_mut(&*ALL_POSTINGS_KEY) {
-            bmp.remove(id);
-        }
-    }
-
-    pub(super) fn has_all_postings(&self) -> bool {
-        self.label_index.contains_key(&*ALL_POSTINGS_KEY)
     }
 
     fn set_timeseries_key(&mut self, id: SeriesRef, new_key: &[u8]) {
@@ -156,33 +125,35 @@ impl Postings {
         debug_assert!(ts.id != 0);
         let id = ts.id;
 
+        let mut labels_added = false;
         for InternedLabel { name, value } in ts.labels.iter() {
             self.add_posting_for_label_value(id, name, value);
+            labels_added = true;
         }
 
-        self.add_id_to_all_postings(id);
+        if !labels_added {
+            // if there are no labels, we still want to be able to find the series by its id, so we add it to the all_postings.
+            self.all_postings.add(id);
+        }
         self.set_timeseries_key(id, key);
     }
 
-    pub fn remove_timeseries(&mut self, series: &TimeSeries) {
+    pub fn remove_timeseries(&mut self, series: &TimeSeries) -> bool {
         let id = series.id;
         if self.id_to_key.remove(&id).is_none() {
             log_warning(format!(
                 "Tried to remove non-existing series id {id} from index"
             ));
         };
-        let labels = series.labels.iter().collect::<Vec<_>>();
-        self.remove_posting_by_id_and_labels(id, &labels);
+        let removed = self.all_postings.remove_checked(id);
+        for label in series.labels.iter() {
+            self.remove_posting_for_label_value(label.name(), label.value(), id);
+        }
+        removed
     }
 
     pub fn count(&self) -> usize {
         self.id_to_key.len()
-    }
-
-    pub fn all_postings(&self) -> &PostingsBitmap {
-        self.label_index
-            .get(&*ALL_POSTINGS_KEY)
-            .unwrap_or(&*EMPTY_BITMAP)
     }
 
     pub(super) fn has_id(&self, id: SeriesRef) -> bool {
@@ -225,14 +196,10 @@ impl Postings {
     pub fn get_label_names(&self) -> BTreeSet<String> {
         let mut names: BTreeSet<String> = BTreeSet::new();
         for (k, map) in self.label_index.iter() {
-            if k != &*ALL_POSTINGS_KEY
-                && let Some((key, _)) = k.split()
+            if let Some((key, _)) = k.split()
                 && !map.is_empty()
-                && key != ALL_POSTINGS_KEY_NAME
+                && !names.contains(key)
             {
-                if names.contains(key) {
-                    continue;
-                }
                 names.insert(key.to_string());
             }
         }
@@ -244,7 +211,6 @@ impl Postings {
         let mut values = Vec::with_capacity(8);
         for (k, map) in self.label_index.prefix(prefix.as_bytes()) {
             if !map.is_empty()
-                && k != &*ALL_POSTINGS_KEY
                 && let Some((_key, value)) = k.split()
                 && !value.is_empty()
             {
@@ -360,12 +326,11 @@ impl Postings {
     }
 
     pub fn postings_without_label(&'_ self, label: &str) -> Cow<'_, PostingsBitmap> {
-        let all = self.all_postings();
         let to_remove = self.postings_for_all_label_values(label);
         if to_remove.is_empty() {
-            Cow::Borrowed(all)
+            Cow::Borrowed(&self.all_postings)
         } else {
-            Cow::Owned(all.andnot(&to_remove))
+            Cow::Owned(self.all_postings.clone().andnot(&to_remove))
         }
     }
 
@@ -379,23 +344,6 @@ impl Postings {
         }
         self.remove_stale_if_needed(&mut to_remove);
         to_remove
-    }
-
-    #[allow(dead_code)]
-    pub fn postings_without_labels<'a>(&'a self, labels: &[&str]) -> Cow<'a, PostingsBitmap> {
-        match labels {
-            [] => Cow::Borrowed(self.all_postings()),
-            [only] => self.postings_without_label(only),
-            _ => {
-                let all = self.all_postings();
-                let to_remove = self.postings_for_any_of_labels(labels);
-                if to_remove.is_empty() {
-                    Cow::Borrowed(all)
-                } else {
-                    Cow::Owned(all.andnot(&to_remove))
-                }
-            }
-        }
     }
 
     pub fn postings_for_filter(&'_ self, filter: &LabelFilter) -> Cow<'_, PostingsBitmap> {
@@ -439,13 +387,13 @@ impl Postings {
         filters: &[LabelFilter],
     ) -> ValkeyResult<Cow<'_, PostingsBitmap>> {
         if filters.is_empty() {
-            return Ok(Cow::Borrowed(self.all_postings()));
+            return Ok(Cow::Borrowed(&self.all_postings));
         }
         if filters.len() == 1 {
             let filter = &filters[0];
             // follow Prometheus here: if we have an empty matcher and label, return all postings.
             if filter.label.is_empty() && filter.matcher.is_empty() {
-                return Ok(Cow::Borrowed(self.all_postings()));
+                return Ok(Cow::Borrowed(&self.all_postings));
             }
             // shortcut the handling of simple equality matchers
             if !filter.is_negative_matcher() && !filter.matches_empty() {
@@ -482,7 +430,7 @@ impl Postings {
             // If there's nothing to subtract from, add in everything and remove the not_its later.
             // We prefer to get all_postings so that the base of subtraction (i.e., all_postings)
             // doesn't include series that may be added to the index reader during this function call.
-            its.push(Cow::Borrowed(self.all_postings()));
+            its.push(Cow::Borrowed(&self.all_postings));
         };
 
         // Sort matchers to have the intersecting matchers first.
@@ -591,7 +539,7 @@ impl Postings {
         }
 
         let mut result = if its.is_empty() {
-            self.all_postings().clone()
+            self.all_postings.clone()
         } else {
             // sort by cardinality first to reduce the amount of work
             its.sort_by_key(|a| a.cardinality());
@@ -653,7 +601,7 @@ impl Postings {
         filters: &[FilterList],
     ) -> ValkeyResult<Cow<'_, PostingsBitmap>> {
         match filters {
-            [] => Ok(Cow::Borrowed(self.all_postings())),
+            [] => Ok(Cow::Borrowed(&self.all_postings)),
             [filters] => self.postings_for_label_filters(filters),
             _ => {
                 let mut result = PostingsBitmap::new();
@@ -680,7 +628,7 @@ impl Postings {
     pub(crate) fn mark_id_as_stale(&mut self, id: SeriesRef) {
         let _ = self.id_to_key.remove(&id);
         self.stale_ids.add(id);
-        self.remove_id_from_all_postings(id);
+        self.all_postings.remove(id);
     }
 
     #[cfg(test)]
@@ -726,7 +674,7 @@ impl Postings {
                 true
             };
 
-            if should_remove && key != &*ALL_POSTINGS_KEY {
+            if should_remove {
                 keys_to_remove.push(key.clone());
             }
 
@@ -783,10 +731,7 @@ impl Postings {
         let mut next_key = None;
 
         if start_prefix.is_none() {
-            let key = &*ALL_POSTINGS_KEY;
-            if let Some(all_postings) = self.label_index.get_mut(key) {
-                optimize_bitmap(all_postings);
-            }
+            optimize_bitmap(&mut self.all_postings);
         }
 
         let mut keys_to_delete = Vec::new();
@@ -796,7 +741,7 @@ impl Postings {
 
         // Collect keys to process
         for (key, bitmap) in self.label_index.prefix_mut(&prefix_bytes) {
-            if bitmap.is_empty() && key != &*ALL_POSTINGS_KEY {
+            if bitmap.is_empty() {
                 keys_to_delete.push(key.clone());
                 continue;
             }
@@ -870,7 +815,7 @@ fn handle_not_equal_match<'a>(
             if s.is_empty() {
                 return with_label(ix, label);
             }
-            let all = ix.all_postings();
+            let all = &ix.all_postings;
             let postings = ix.postings_for_label_value(label, s);
             if postings.is_empty() {
                 Cow::Borrowed(all)
@@ -885,7 +830,7 @@ fn handle_not_equal_match<'a>(
                 _ => {
                     // get postings for label m.label without values in values
                     let to_remove = ix.postings_for_label_values(label, values);
-                    let all_postings = ix.all_postings();
+                    let all_postings = &ix.all_postings;
                     if to_remove.is_empty() {
                         Cow::Borrowed(all_postings)
                     } else {
@@ -988,20 +933,6 @@ mod tests {
 
         // Remove non-existent posting (should not panic)
         postings.remove_posting_for_label_value("label3", "value3", 3);
-    }
-
-    #[test]
-    fn test_postings_all_postings() {
-        let mut postings = Postings::default();
-
-        postings.add_id_to_all_postings(1);
-        postings.add_id_to_all_postings(2);
-        postings.add_id_to_all_postings(3);
-
-        assert_eq!(postings.all_postings().cardinality(), 3);
-
-        postings.remove_id_from_all_postings(2);
-        assert_eq!(postings.all_postings().cardinality(), 2);
     }
 
     #[test]
@@ -1213,146 +1144,6 @@ mod tests {
         assert!(result_short.contains(4));
     }
 
-    // postings_without_labels
-    #[test]
-    fn test_postings_without_labels_all_series_have_label() {
-        let mut postings = Postings::default();
-
-        // Add postings for three series, all having "common_label"
-        postings.add_posting_for_label_value(1, "common_label", "value1");
-        postings.add_posting_for_label_value(2, "common_label", "value2");
-        postings.add_posting_for_label_value(3, "common_label", "value3");
-
-        // Add some other labels
-        postings.add_posting_for_label_value(1, "label1", "value1");
-        postings.add_posting_for_label_value(2, "label2", "value2");
-        postings.add_posting_for_label_value(3, "label3", "value3");
-
-        // Add all series to ALL_POSTINGS
-        postings.add_id_to_all_postings(1);
-        postings.add_id_to_all_postings(2);
-        postings.add_id_to_all_postings(3);
-
-        // Get postings without the common label
-        let result = postings.postings_without_labels(&["common_label"]);
-
-        // The result should be empty as all series have the common label
-        assert!(result.is_empty());
-        assert_eq!(result.cardinality(), 0);
-    }
-
-    #[test]
-    fn test_postings_without_labels_empty_array() {
-        let mut postings = Postings::default();
-
-        // Add some postings
-        postings.add_posting_for_label_value(1, "label1", "value1");
-        postings.add_posting_for_label_value(2, "label2", "value2");
-        postings.add_posting_for_label_value(3, "label3", "value3");
-
-        // Add all postings to the ALL_POSTINGS_KEY
-        postings.add_id_to_all_postings(1);
-        postings.add_id_to_all_postings(2);
-        postings.add_id_to_all_postings(3);
-
-        // Call postings_without_labels with an empty array
-        let result = postings.postings_without_labels(&[]);
-
-        // The result should be equal to all_postings
-        assert_eq!(result.as_ref(), postings.all_postings());
-        assert_eq!(result.cardinality(), 3);
-        assert!(result.contains(1));
-        assert!(result.contains(2));
-        assert!(result.contains(3));
-    }
-
-    #[test]
-    fn test_postings_without_labels_mixed_existing_and_non_existing() {
-        let mut postings = Postings::default();
-
-        // Add some postings
-        postings.add_posting_for_label_value(1, "label1", "value1");
-        postings.add_posting_for_label_value(2, "label2", "value2");
-        postings.add_posting_for_label_value(3, "label3", "value3");
-        postings.add_posting_for_label_value(4, "label4", "value4");
-
-        // Add all IDs to all_postings
-        for id in 1..=4 {
-            postings.add_id_to_all_postings(id);
-        }
-
-        // Test with a mix of existing and non-existing labels
-        let result = postings.postings_without_labels(&["label1", "label3", "non_existing_label"]);
-
-        // Expected result: IDs 2 and 4 (not associated with label1 or label3)
-        assert_eq!(result.cardinality(), 2);
-        assert!(!result.contains(1));
-        assert!(result.contains(2));
-        assert!(!result.contains(3));
-        assert!(result.contains(4));
-    }
-
-    #[test]
-    fn test_postings_without_labels_with_nonexistent_labels() {
-        let mut postings = Postings::default();
-
-        // Add some postings
-        postings.add_posting_for_label_value(1, "label1", "value1");
-        postings.add_posting_for_label_value(2, "label2", "value2");
-        postings.add_posting_for_label_value(3, "label3", "value3");
-        postings.add_posting_for_label_value(4, "label4", "value4");
-
-        // Add all postings to the ALL_POSTINGS_KEY
-        for id in 1..=4 {
-            postings.add_id_to_all_postings(id);
-        }
-
-        // Test with a mix of existing and non-existing labels
-        let labels = &[
-            "label1",
-            "label3",
-            "nonexistent_label1",
-            "nonexistent_label2",
-        ];
-        let result = postings.postings_without_labels(labels);
-
-        // Expected result: series without label1 and label3
-        assert_eq!(result.cardinality(), 2);
-        assert!(result.contains(2));
-        assert!(result.contains(4));
-        assert!(!result.contains(1));
-        assert!(!result.contains(3));
-    }
-
-    #[test]
-    fn test_postings_without_labels_multiple_labels() {
-        let mut postings = Postings::default();
-
-        // Add postings for multiple series with different label combinations
-        postings.add_posting_for_label_value(1, "label1", "value1");
-        postings.add_posting_for_label_value(1, "label2", "value2");
-        postings.add_posting_for_label_value(2, "label1", "value1");
-        postings.add_posting_for_label_value(2, "label3", "value3");
-        postings.add_posting_for_label_value(3, "label2", "value2");
-        postings.add_posting_for_label_value(3, "label3", "value3");
-        postings.add_posting_for_label_value(4, "label4", "value4");
-
-        // Add all series to ALL_POSTINGS
-        for id in 1..=4 {
-            postings.add_id_to_all_postings(id);
-        }
-
-        // Test postings_without_labels for multiple labels
-        let result = postings.postings_without_labels(&["label1", "label2"]);
-
-        // Verify the result
-        assert_eq!(result.cardinality(), 1);
-        assert!(!result.contains(1)); // Has both label1 and label2
-        assert!(!result.contains(2)); // Has label1
-        assert!(!result.contains(3)); // Has label2
-        assert!(result.contains(4)); // Has neither label1 nor label2
-    }
-
     #[test]
     fn test_memory_postings_set_timeseries_key() {
         let mut postings = Postings::default();
@@ -1383,7 +1174,6 @@ mod tests {
 
         postings.add_posting_for_label_value(1, "label1", "value1");
         postings.add_posting_for_label_value(1, "label2", "value2");
-        postings.add_id_to_all_postings(1);
 
         postings.remove_timeseries(&series);
 
@@ -1397,7 +1187,7 @@ mod tests {
                 .postings_for_label_value("label2", "value2")
                 .is_empty()
         );
-        assert!(postings.all_postings().is_empty());
+        assert!(postings.all_postings.is_empty());
     }
 
     #[test]

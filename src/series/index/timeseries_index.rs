@@ -4,7 +4,7 @@ use std::hash::BuildHasher;
 use std::sync::{RwLock, RwLockReadGuard};
 
 use super::posting_stats::{PostingStat, PostingsStats, StatsMaxHeap};
-use super::postings::{ALL_POSTINGS_KEY, ALL_POSTINGS_KEY_NAME, Postings, PostingsBitmap};
+use super::postings::{Postings, PostingsBitmap};
 use crate::common::constants::METRIC_NAME_LABEL;
 use crate::common::context::is_real_user_client;
 use crate::common::hash::DeterministicHasher;
@@ -409,11 +409,7 @@ impl TimeSeriesIndex {
 
         let label_count = per_label_counts.len();
 
-        let series_count_by_focus_label_value = if focus_label != ALL_POSTINGS_KEY_NAME {
-            Some(focus_label_value_counts.into_vec())
-        } else {
-            None
-        };
+        let series_count_by_focus_label_value = Some(focus_label_value_counts.into_vec());
 
         for (name, count) in per_label_counts {
             label_name_counts.push(PostingStat {
@@ -480,7 +476,7 @@ impl TimeSeriesIndex {
     #[allow(dead_code)]
     pub fn label_count(&self) -> usize {
         let inner = self.inner.read().unwrap();
-        inner.label_index.len().saturating_sub(1)
+        inner.label_index.len()
     }
 
     pub fn is_empty(&self) -> bool {
@@ -599,10 +595,6 @@ impl<'a> BatchIterator<'a> {
             }
 
             processed_in_batch += 1;
-
-            if key == &*ALL_POSTINGS_KEY {
-                continue;
-            }
 
             let cardinality = Self::adjusted_cardinality(&inner, bitmap, has_stale_ids);
             if cardinality > 0
