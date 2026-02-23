@@ -2,9 +2,11 @@
 
 counts the number of distinct series.
 
-#### Syntax
+
 ```
-TS.CARD [START fromTimestamp] [END toTimestamp] [FILTER filter...]
+TS.CARD [START fromTimestamp] [END toTimestamp]
+[FILTER_BY_RANGE [NOT] rangeStart rangeEnd]
+[FILTER filter...]
 ```
 returns the number of unique time series that match a certain label set.
 
@@ -17,12 +19,12 @@ Repeated series selector argument that selects the series to return. Optional.
 </details>
 
 ### Optional Arguments
-<details open><summary><code>fromTimestamp</code></summary>
+
+- fromTimestamp
 Start timestamp, inclusive. Results will only be returned for series which have samples in the range `[fromTimestamp, toTimestamp]`
-</details>
-<details open><summary><code>toTimestamp</code></summary>
+
+- toTimestamp
 End timestamp, inclusive.
-</details>
 
 #### Return
 

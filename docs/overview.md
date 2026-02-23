@@ -83,7 +83,7 @@ Data retrieval is highly flexible, supporting filtering, aggregation, and arithm
 * **Filtering:** Queries use label matchers (e.g., `TS.MRANGE ... FILTER region=us-east metric!=cpu`) to select the
   target series.
 * **Aggregation:** Raw samples can be aggregated at query time using functions such as `avg`, `sum`, `min`, `max`,
-  `count`, `first`, `last`, `std.p`, `std.s`, `var.p`, `var.s`, and `twa` (Time Weighted Average).
+  `count`, `first`, `last`, `std.p`, `std.s`, `var.p`, and `var.s`.
 * **Alignment:** Time buckets can be aligned to specific intervals to ensure consistent reporting across different
   series.
 

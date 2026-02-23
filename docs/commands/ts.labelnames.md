@@ -1,10 +1,10 @@
 ## TS.LABELNAMES
 
-### Synopsis
+returns a list of label names for select series.
+
 ```
 TS.LABELNAMES [START fromTimestamp] [END toTimestamp] FILTER selector... 
 ```
-returns a list of label names for select series.
 
 ### Required Arguments
 <details open><summary><code>fromTimestamp</code></summary>

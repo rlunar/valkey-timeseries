@@ -1,6 +1,7 @@
-**TS.CREATE** create a timeseries.
+# TS.CREATE
 
-#### Syntax
+create a timeseries.
+
 ```
 TS.CREATE key
   [RETENTION retentionPeriod]

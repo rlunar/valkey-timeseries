@@ -1,6 +1,7 @@
-**TS.ALTER** alter a timeseries.
+# TS.ALTER
 
-#### Syntax
+alter a timeseries.
+
 ```
 TS.ALTER key
   [RETENTION retentionPeriod]
