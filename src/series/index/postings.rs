@@ -96,8 +96,17 @@ impl Postings {
         label: &str,
         value: &str,
     ) -> bool {
-        let key = IndexKey::for_label_value(label, value);
         self.all_postings.add(ts_id);
+        self.add_posting_for_label_value_internal(ts_id, label, value)
+    }
+
+    fn add_posting_for_label_value_internal(
+        &mut self,
+        ts_id: SeriesRef,
+        label: &str,
+        value: &str,
+    ) -> bool {
+        let key = IndexKey::for_label_value(label, value);
         match self.label_index.entry(key) {
             ARTEntry::Occupied(mut entry) => {
                 entry.get_mut().add(ts_id);
@@ -126,16 +135,11 @@ impl Postings {
         debug_assert!(ts.id != 0);
         let id = ts.id;
 
-        let mut labels_added = false;
         for InternedLabel { name, value } in ts.labels.iter() {
-            self.add_posting_for_label_value(id, name, value);
-            labels_added = true;
+            self.add_posting_for_label_value_internal(id, name, value);
         }
 
-        if !labels_added {
-            // if there are no labels, we still want to be able to find the series by its id, so we add it to the all_postings.
-            self.all_postings.add(id);
-        }
+        self.all_postings.add(id);
         self.set_timeseries_key(id, key);
     }
 
