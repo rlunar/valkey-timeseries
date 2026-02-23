@@ -123,14 +123,12 @@ with a consistency error message.
 The commands operate by mutating the local copy of the metadata and then triggering the convergence protocol. The most
 likely cause of failure is a shard-down or network partition situation.
 
-The `FT.INFO` command has options that allow aggregation of index statistics and status across the cluster.
+The `TS.INFO` command has options that allow aggregation of index statistics and status across the cluster.
 
 ## Query Consistency
 
-The query operations: `TS.MRANGE` and `FT.AGGREGATE` can only be executed by nodes that share the same index definition
-and slot ownership map. Cross-shard query commands contain a checksum of the coordinator's index definition and slot
-ownership. If a receiving node's index checksum or slot ownership checksum mismatches then the query is rejected and the
-coordinator will retry the operation. If a timeout occurs, then by default an error is returned. The `SOMESHARDS` option
-of the `FT.SEARCH` command can be used to override this behavior to allow a result to be generated if only a subset of
-the cross-shard query operations succeed. The `INCONSISTENT` option of `FT.SEARCH` can be used to allow results from
-nodes with different views of the cluster.
+The query operations: `TS.MRANGE` and other multi-shard aggregation queries can only be executed by nodes that share the
+same index definition and slot ownership map. Cross-shard query commands contain a checksum of the coordinator's index
+definition and slot ownership. If a receiving node's index checksum or slot ownership checksum mismatches then the query
+is rejected and the coordinator will retry the operation. If a timeout occurs, then by default an error is returned and
+the client must retry once the cluster has converged to a consistent state.
