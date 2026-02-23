@@ -61,6 +61,7 @@ impl Postings {
         self.label_index.clear();
         self.id_to_key.clear();
         self.stale_ids.clear();
+        self.all_postings.clear();
     }
 
     /// `swap` the inner value with some other value
