@@ -335,7 +335,7 @@ impl Postings {
         if to_remove.is_empty() {
             Cow::Borrowed(&self.all_postings)
         } else {
-            Cow::Owned(self.all_postings.clone().andnot(&to_remove))
+            Cow::Owned(self.all_postings.andnot(&to_remove))
         }
     }
 
