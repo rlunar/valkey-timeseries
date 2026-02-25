@@ -10,7 +10,6 @@ mod guard;
 pub mod index;
 pub mod mrange;
 mod multi_del;
-pub mod range_utils;
 pub mod request_types;
 mod sample_merge;
 pub mod serialization;

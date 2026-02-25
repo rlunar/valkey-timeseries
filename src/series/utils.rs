@@ -1,7 +1,7 @@
 use crate::common::constants::METRIC_NAME_LABEL;
 use crate::common::context::get_current_db;
 use crate::error_consts;
-use crate::labels::Label;
+use crate::labels::{InternedLabel, Label};
 use crate::series::acl::check_key_permissions;
 use crate::series::chunks::ChunkEncoding;
 use crate::series::index::{get_db_index, next_timeseries_id};
@@ -230,4 +230,23 @@ fn add_default_compactions(
     series.rules = rules;
 
     Ok(())
+}
+
+pub fn get_series_labels<'a>(
+    series: &'a TimeSeries,
+    with_labels: bool,
+    selected_labels: &[String],
+) -> Vec<Option<InternedLabel<'a>>> {
+    if !with_labels && selected_labels.is_empty() {
+        return vec![];
+    }
+
+    if selected_labels.is_empty() {
+        series.labels.iter().map(Some).collect::<Vec<_>>()
+    } else {
+        selected_labels
+            .iter()
+            .map(|name| series.get_label(name))
+            .collect::<Vec<_>>()
+    }
 }

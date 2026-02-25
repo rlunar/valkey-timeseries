@@ -4,10 +4,9 @@ use crate::commands::{parse_command_arg_token, parse_label_list, parse_series_se
 use crate::error_consts;
 use crate::fanout::{FanoutOperation, is_clustered};
 use crate::labels::Label;
-use crate::series::get_latest_compaction_sample;
 use crate::series::index::with_matched_series;
-use crate::series::range_utils::get_series_labels;
 use crate::series::request_types::{MGetRequest, MGetSeriesData, MatchFilterOptions};
+use crate::series::{get_latest_compaction_sample, get_series_labels};
 use valkey_module::{Context, NextArg, ValkeyError, ValkeyResult, ValkeyString, ValkeyValue};
 
 /// TS.MGET
